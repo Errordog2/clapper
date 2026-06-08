@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import * as THREE from "three"
 import type { ThreeEvent } from "@react-three/fiber"
-import { ClapProject, ClapSegment, ClapSegmentCategory, isValidNumber, newClap, serializeClap, ClapTracks, ClapEntity, ClapMeta } from "@aitube/clap"
+import { ClapProject, ClapSegment, ClapSegmentCategory, isValidNumber, newClap, newSegment, serializeClap, ClapTracks, ClapEntity, ClapMeta } from "@aitube/clap"
 
 import { TimelineSegment, SegmentEditionStatus, SegmentVisibility, TimelineStore, SegmentArea, SegmentPointerEvent, SegmentEventCallbackHandler, Invalidate } from "@/types/timeline"
 import { getDefaultProjectState, getDefaultState } from "@/utils/getDefaultState"
@@ -730,6 +730,112 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
       })
     })
   },
+  createTrack: ({
+    trackId,
+    name,
+    category,
+    height,
+    isPreview,
+  }: {
+    trackId?: number
+    name?: string
+    category?: ClapSegmentCategory
+    height?: number
+    isPreview?: boolean
+  } = {}): number => {
+    const {
+      width,
+      height: timelineHeight,
+      tracks,
+      cellWidth,
+      defaultSegmentDurationInSteps,
+      durationInMsPerStep,
+      durationInMs,
+      defaultCellHeight,
+      defaultPreviewHeight,
+      allSegmentsChanged: previousAllSegmentsChanged,
+      atLeastOneSegmentChanged: previousAtLeastOneSegmentChanged,
+    } = get()
+
+    const nextTrackId = isValidNumber(trackId)
+      ? trackId!
+      : tracks.reduce((maxId, track) => Math.max(maxId, track?.id ?? -1), -1) + 1
+
+    const isPreviewTrack = typeof isPreview === "boolean"
+      ? isPreview
+      : category === ClapSegmentCategory.IMAGE || category === ClapSegmentCategory.VIDEO
+
+    const nextTracks = tracks.slice()
+    for (let id = 0; id < nextTrackId; id++) {
+      if (!nextTracks[id]) {
+        nextTracks[id] = {
+          id,
+          name: "(empty)",
+          isPreview: false,
+          height: defaultCellHeight,
+          hue: 0,
+          occupied: false,
+          visible: true,
+        }
+      }
+    }
+    nextTracks[nextTrackId] = {
+      id: nextTrackId,
+      name: name || (category ? `${category}` : "(empty)"),
+      isPreview: isPreviewTrack,
+      height: isValidNumber(height)
+        ? height!
+        : isPreviewTrack
+          ? defaultPreviewHeight
+          : defaultCellHeight,
+      hue: 0,
+      occupied: false,
+      visible: true,
+    }
+
+    set({
+      allSegmentsChanged: previousAllSegmentsChanged + 1,
+      atLeastOneSegmentChanged: previousAtLeastOneSegmentChanged + 1,
+      ...computeContentSizeMetrics({
+        width,
+        height: timelineHeight,
+        tracks: nextTracks,
+        cellWidth,
+        defaultSegmentDurationInSteps,
+        durationInMsPerStep,
+        durationInMs,
+      }),
+    })
+
+    return nextTrackId
+  },
+  findTrackForClip: ({
+    category,
+    startTimeInMs = 0,
+    endTimeInMs = startTimeInMs,
+  }: {
+    category?: ClapSegmentCategory
+    startTimeInMs?: number
+    endTimeInMs?: number
+  } = {}): number | undefined => {
+    if (!category) { return undefined }
+
+    const { tracks, segments } = get()
+
+    return tracks.find((track) => {
+      if (!track?.visible) { return false }
+
+      const categories = track.name.split(",").map((name) => name.trim())
+      const acceptsCategory = categories.includes(category) || track.name === "(empty)"
+      if (!acceptsCategory) { return false }
+
+      return !segments.some((segment) => (
+        segment.track === track.id
+        && segment.startTimeInMs < endTimeInMs
+        && segment.endTimeInMs > startTimeInMs
+      ))
+    })?.id
+  },
   setContainerSize: ({ width, height }: { width: number; height: number }) => {
     const { containerWidth: previousWidth, containerHeight: previousHeight } = get()
     const changed = 
@@ -920,6 +1026,19 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
         occupied: true,
         visible: true,
       }
+    } else {
+      const track = tracks[segment.track]
+      const categories = track.name.split(",").map((name) => name.trim())
+      const isEmptyTrack = track.name === "(empty)"
+      tracks[segment.track] = {
+        ...track,
+        name: isEmptyTrack
+          ? `${segment.category}`
+          : categories.includes(segment.category)
+            ? track.name
+            : "(misc)",
+        occupied: true,
+      }
     }
 
     if (triggerChange) {
@@ -1037,6 +1156,73 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
         durationInMs,
       })
     })
+  },
+  createClip: async ({
+    category = ClapSegmentCategory.GENERIC,
+    startTimeInMs = 0,
+    durationInMs,
+    track,
+    label,
+    prompt,
+  }: {
+    category?: ClapSegmentCategory
+    startTimeInMs?: number
+    durationInMs?: number
+    track?: number
+    label?: string
+    prompt?: string
+  } = {}): Promise<TimelineSegment> => {
+    const {
+      defaultSegmentDurationInSteps,
+      durationInMsPerStep,
+      createTrack,
+      findTrackForClip,
+      addSegment,
+      tracks,
+    } = get()
+
+    const assetDurationInMs = isValidNumber(durationInMs)
+      ? durationInMs!
+      : defaultSegmentDurationInSteps * durationInMsPerStep
+
+    const endTimeInMs = startTimeInMs + assetDurationInMs
+    const shouldUseRequestedTrack = isValidNumber(track)
+    const matchingTrack = shouldUseRequestedTrack
+      ? undefined
+      : findTrackForClip({
+        category,
+        startTimeInMs,
+        endTimeInMs,
+      })
+    const targetTrack = shouldUseRequestedTrack
+      ? track!
+      : isValidNumber(matchingTrack)
+        ? matchingTrack!
+        : createTrack({ category })
+
+    if (shouldUseRequestedTrack && !tracks[targetTrack]) {
+      createTrack({ trackId: targetTrack, category })
+    }
+
+    const clip = await clapSegmentToTimelineSegment(newSegment({
+      category,
+      track: targetTrack,
+      startTimeInMs,
+      endTimeInMs,
+      assetDurationInMs,
+      label,
+      prompt,
+      createdBy: "human",
+      editedBy: "human",
+    }))
+
+    await addSegment({
+      segment: clip,
+      startTimeInMs,
+      track: targetTrack,
+    })
+
+    return clip
   },
   findFreeTrack: ({
     startTimeInMs,

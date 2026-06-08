@@ -22,6 +22,9 @@ export function Timeline({ width, height }: { width: number; height: number }) {
 
   const contentHeight = useTimeline(s => s.contentHeight)
   const contentWidth = useTimeline(s => s.contentWidth)
+  const cellWidth = useTimeline(s => s.cellWidth)
+  const durationInMsPerStep = useTimeline(s => s.durationInMsPerStep)
+  const createClip = useTimeline(s => s.createClip)
 
   // console.log(`re-rendering <Timeline>`)
   return (
@@ -34,7 +37,14 @@ export function Timeline({ width, height }: { width: number; height: number }) {
           -(size.width / 2),
           0,
           -1
-        ]}>
+        ]}
+        onDoubleClick={(event) => {
+          event.stopPropagation()
+          if (!cellWidth || !durationInMsPerStep) { return }
+          const cursorX = event.point.x + (width / 2)
+          const startTimeInMs = Math.max(0, (cursorX / cellWidth) * durationInMsPerStep)
+          void createClip({ startTimeInMs })
+        }}>
         <meshBasicMaterial
           attach="material"
           transparent

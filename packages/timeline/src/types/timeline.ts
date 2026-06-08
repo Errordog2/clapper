@@ -1,6 +1,6 @@
 import * as THREE from "three"
 import type { ThreeEvent } from "@react-three/fiber"
-import { ClapEntity, ClapImageRatio, ClapMeta, ClapProject, ClapScene, ClapSegment, ClapTracks } from "@aitube/clap"
+import { ClapEntity, ClapImageRatio, ClapMeta, ClapProject, ClapScene, ClapSegment, ClapSegmentCategory, ClapTracks } from "@aitube/clap"
 
 import { ClapSegmentColorScheme, ClapTimelineTheme } from "./theme"
 import { TimelineControlsImpl } from "@/components/controls/types"
@@ -327,6 +327,18 @@ export type TimelineStoreModifiers = {
   setScrollX: (scrollX: number) => void
   handleMouseWheel: ({ deltaX, deltaY }: { deltaX: number; deltaY: number }) => void
   toggleTrackVisibility: (trackId: number) => void
+  createTrack: (params?: {
+    trackId?: number
+    name?: string
+    category?: ClapSegmentCategory
+    height?: number
+    isPreview?: boolean
+  }) => number
+  findTrackForClip: (params?: {
+    category?: ClapSegmentCategory
+    startTimeInMs?: number
+    endTimeInMs?: number
+  }) => number | undefined
   setContainerSize: ({ width, height }: { width: number; height: number }) => void
   setTimelineCursor: (timelineCursor?: TimelineCursorImpl) => void
   setIsDraggingCursor: (isDraggingCursor: boolean) => void
@@ -365,7 +377,7 @@ export type TimelineStoreModifiers = {
     track,
     triggerChange,
   }: {
-    segment: TimelineSegment
+    segment: ClapSegment
     track: number
     triggerChange?: boolean
   }) => Promise<void>
@@ -378,6 +390,14 @@ export type TimelineStoreModifiers = {
     startTimeInMs?: number
     track?: number
 }) => Promise<void>
+  createClip: (params?: {
+    category?: ClapSegmentCategory
+    startTimeInMs?: number
+    durationInMs?: number
+    track?: number
+    label?: string
+    prompt?: string
+  }) => Promise<TimelineSegment>
 
   /**
    * Find an available free track
