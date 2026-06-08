@@ -4,9 +4,13 @@ import { ClapSegmentCategory } from "@aitube/clap"
 import { useTimeline } from "../src/hooks/useTimeline"
 import { getDefaultState } from "../src/utils/getDefaultState"
 
+const resetTimeline = () => {
+  useTimeline.setState(getDefaultState())
+}
+
 describe("timeline track and clip creation", () => {
   it("creates an empty track and recomputes timeline content", () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
 
     const trackId = useTimeline.getState().createTrack({
       name: "Dialogue",
@@ -21,7 +25,7 @@ describe("timeline track and clip creation", () => {
   })
 
   it("creates a clip on a new track when no track is requested", async () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
 
     const clip = await useTimeline.getState().createClip({
       category: ClapSegmentCategory.SOUND,
@@ -40,7 +44,7 @@ describe("timeline track and clip creation", () => {
   })
 
   it("reuses an existing same-category track when it has room", async () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
     const trackId = useTimeline.getState().createTrack({
       name: "IMAGE",
       category: ClapSegmentCategory.IMAGE,
@@ -60,7 +64,7 @@ describe("timeline track and clip creation", () => {
   })
 
   it("creates a clip on a requested track and materializes missing tracks", async () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
 
     const clip = await useTimeline.getState().createClip({
       category: ClapSegmentCategory.IMAGE,
@@ -76,7 +80,7 @@ describe("timeline track and clip creation", () => {
   })
 
   it("sets an empty track category from the track selector", () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
     const trackId = useTimeline.getState().createTrack()
 
     const changed = useTimeline.getState().setTrackCategory({
@@ -92,7 +96,7 @@ describe("timeline track and clip creation", () => {
   })
 
   it("moves a clip along the timeline and onto a same-category track", async () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
     const firstTrack = useTimeline.getState().createTrack({
       category: ClapSegmentCategory.SOUND,
     })
@@ -123,7 +127,7 @@ describe("timeline track and clip creation", () => {
   })
 
   it("rejects moving a clip to a different track category", async () => {
-    useTimeline.setState(getDefaultState(), true)
+    resetTimeline()
     const soundTrack = useTimeline.getState().createTrack({
       category: ClapSegmentCategory.SOUND,
     })
