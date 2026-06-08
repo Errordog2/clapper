@@ -1,5 +1,6 @@
 import React from "react"
-import { Plane, Text } from "@react-three/drei"
+import { Html, Plane, Text } from "@react-three/drei"
+import { ClapSegmentCategory } from "@aitube/clap"
 
 import {
 useTimeline
@@ -9,6 +10,16 @@ import { leftBarTrackScaleWidth } from "@/constants/themes"
 import { useHorizontaTrackLines } from "@/hooks/useHorizontalTrackLines"
 import { LineGeometry } from "three/examples/jsm/Addons.js"
 import { hslToHex } from "@/utils"
+
+const editableTrackCategories = [
+  ClapSegmentCategory.GENERIC,
+  ClapSegmentCategory.IMAGE,
+  ClapSegmentCategory.VIDEO,
+  ClapSegmentCategory.DIALOGUE,
+  ClapSegmentCategory.SOUND,
+  ClapSegmentCategory.MUSIC,
+  ClapSegmentCategory.ACTION,
+]
 
 export function LeftBarTrackScale() {
   // console.log(`re-rendering <LeftBarTrackScale>`)
@@ -22,6 +33,7 @@ export function LeftBarTrackScale() {
 
   const tracks = useTimeline(s => s.tracks)
   const toggleTrackVisibility = useTimeline((s) => s.toggleTrackVisibility)
+  const setTrackCategory = useTimeline((s) => s.setTrackCategory)
 
   const setLeftBarTrackScale = useTimeline(s => s.setLeftBarTrackScale)
 
@@ -135,39 +147,48 @@ export function LeftBarTrackScale() {
             track.id
             }
           </Text>
-          <Text
-            
+          <Html
             position={[
               10,
-              -8, // -getVerticalCellPosition(0, track.id),
-              2
+              -8,
+              3
             ]}
-
-            scale={[
-              11,
-              11,
-              1
-            ]}
-
-            lineHeight={1.0}
-            color={theme.leftBarTrackScale.textColor}
-            // fillOpacity={0.7}
-            anchorX="center" // default
-            anchorY="middle" // default
-
-            // keep in mind this will impact the font width
-            // so you will have to change the "Arial" or "bold Arial"
-            // in the function which computes a character's width
-            fontWeight={600}
-            fillOpacity={0.7}
-            visible={
-              true
-            }
+            center
           >
-            {
-            track.name
-            }
-          </Text>
+            <select
+              aria-label={`Track ${track.id} type`}
+              value={
+                editableTrackCategories.includes(track.name as ClapSegmentCategory)
+                  ? track.name
+                  : ClapSegmentCategory.GENERIC
+              }
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                setTrackCategory({
+                  trackId: track.id,
+                  category: event.currentTarget.value as ClapSegmentCategory,
+                })
+                event.stopPropagation()
+              }}
+              style={{
+                width: 76,
+                maxWidth: 76,
+                height: 18,
+                border: "1px solid rgba(255,255,255,0.35)",
+                borderRadius: 4,
+                background: "rgba(0,0,0,0.35)",
+                color: theme.leftBarTrackScale.textColor,
+                fontSize: 10,
+              }}
+            >
+              {editableTrackCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </Html>
           </Plane>
         ))}
       </group>

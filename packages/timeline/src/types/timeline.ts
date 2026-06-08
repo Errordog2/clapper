@@ -327,6 +327,10 @@ export type TimelineStoreModifiers = {
   setScrollX: (scrollX: number) => void
   handleMouseWheel: ({ deltaX, deltaY }: { deltaX: number; deltaY: number }) => void
   toggleTrackVisibility: (trackId: number) => void
+  setTrackCategory: (params: {
+    trackId: number
+    category: ClapSegmentCategory
+  }) => boolean
   createTrack: (params?: {
     trackId?: number
     name?: string
@@ -398,6 +402,11 @@ export type TimelineStoreModifiers = {
     label?: string
     prompt?: string
   }) => Promise<TimelineSegment>
+  moveClip: (params: {
+    segmentId: string
+    startTimeInMs?: number
+    track?: number
+  }) => TimelineSegment | undefined
 
   /**
    * Find an available free track

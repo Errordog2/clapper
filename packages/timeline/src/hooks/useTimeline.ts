@@ -539,6 +539,7 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
   }): SegmentEventCallbackHandler => {
     function segmentEventCallbackHandler(event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>) {
       const pointX = event.point.x
+      const pointY = event.point.y
       const offsetX = event.offsetX
       const offsetY = event.offsetY
 
@@ -554,7 +555,20 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
         }, null, 2))
       */
 
-      const { cellWidth, containerWidth, durationInMsPerStep, setSelectedSegment, setHoveredSegment, setEditedSegment } = get()
+      const {
+        cellWidth,
+        containerWidth,
+        contentHeight,
+        durationInMsPerStep,
+        tracks,
+        editedSegment,
+        getCellHeight,
+        getVerticalCellPosition,
+        moveClip,
+        setSelectedSegment,
+        setHoveredSegment,
+        setEditedSegment,
+      } = get()
 
       const durationInSteps = (
         (segment.endTimeInMs - segment.startTimeInMs) / durationInMsPerStep
@@ -595,6 +609,29 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
       : SegmentArea.MIDDLE
 
       if (isOutOfRange) {
+        event.stopPropagation()
+        return false
+      }
+
+      const isPrimaryButtonDown = event.buttons === 1
+      if (
+        eventType === SegmentPointerEvent.MOVE
+        && area === SegmentArea.MIDDLE
+        && isPrimaryButtonDown
+        && editedSegment?.id === segment.id
+        && editedSegment.editionStatus === SegmentEditionStatus.DRAGGING
+      ) {
+        const cursorY = Math.max(0, (contentHeight / 2) - pointY)
+        const targetTrack = tracks.find((track) => {
+          const top = getVerticalCellPosition(0, track.id)
+          const bottom = top + getCellHeight(track.id)
+          return cursorY >= top && cursorY < bottom
+        })
+        moveClip({
+          segmentId: segment.id,
+          startTimeInMs: cursorTimestampAtInMs - ((segment.endTimeInMs - segment.startTimeInMs) / 2),
+          track: targetTrack?.id,
+        })
         event.stopPropagation()
         return false
       }
@@ -730,6 +767,65 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
       })
     })
   },
+  setTrackCategory: ({
+    trackId,
+    category,
+  }: {
+    trackId: number
+    category: ClapSegmentCategory
+  }): boolean => {
+    const {
+      width,
+      height,
+      tracks,
+      segments,
+      cellWidth,
+      defaultSegmentDurationInSteps,
+      durationInMsPerStep,
+      durationInMs,
+      defaultCellHeight,
+      defaultPreviewHeight,
+      allSegmentsChanged: previousAllSegmentsChanged,
+      atLeastOneSegmentChanged: previousAtLeastOneSegmentChanged,
+    } = get()
+
+    const track = tracks[trackId]
+    if (!track) { return false }
+
+    const hasConflictingSegments = segments.some((segment) => (
+      segment.track === trackId
+      && segment.category !== category
+    ))
+    if (hasConflictingSegments) { return false }
+
+    const isPreview = category === ClapSegmentCategory.IMAGE || category === ClapSegmentCategory.VIDEO
+    const nextTracks = tracks.map((track) => (
+      track.id === trackId
+        ? {
+          ...track,
+          name: `${category}`,
+          isPreview,
+          height: isPreview ? defaultPreviewHeight : defaultCellHeight,
+        }
+        : track
+    ))
+
+    set({
+      allSegmentsChanged: previousAllSegmentsChanged + 1,
+      atLeastOneSegmentChanged: previousAtLeastOneSegmentChanged + 1,
+      ...computeContentSizeMetrics({
+        width,
+        height,
+        tracks: nextTracks,
+        cellWidth,
+        defaultSegmentDurationInSteps,
+        durationInMsPerStep,
+        durationInMs,
+      }),
+    })
+
+    return true
+  },
   createTrack: ({
     trackId,
     name,
@@ -839,7 +935,7 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
   setContainerSize: ({ width, height }: { width: number; height: number }) => {
     const { containerWidth: previousWidth, containerHeight: previousHeight } = get()
     const changed = 
-      (Math.round(previousWidth) !== Math.round(height))
+      (Math.round(previousWidth) !== Math.round(width))
       || (Math.round(previousHeight) !== Math.round(height))
     if (!changed) { return }
 
@@ -1223,6 +1319,102 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
     })
 
     return clip
+  },
+  moveClip: ({
+    segmentId,
+    startTimeInMs,
+    track,
+  }: {
+    segmentId: string
+    startTimeInMs?: number
+    track?: number
+  }): TimelineSegment | undefined => {
+    const {
+      width,
+      height,
+      tracks,
+      segments: previousSegments,
+      cellWidth,
+      defaultSegmentDurationInSteps,
+      durationInMsPerStep,
+      durationInMs: previousDurationInMs,
+      allSegmentsChanged: previousAllSegmentsChanged,
+      atLeastOneSegmentChanged: previousAtLeastOneSegmentChanged,
+    } = get()
+
+    const segment = previousSegments.find((segment) => segment.id === segmentId)
+    if (!segment) { return undefined }
+
+    const segmentDurationInMs = segment.endTimeInMs - segment.startTimeInMs
+    const nextStartTimeInMs = isValidNumber(startTimeInMs)
+      ? Math.max(0, startTimeInMs!)
+      : segment.startTimeInMs
+    const nextEndTimeInMs = nextStartTimeInMs + segmentDurationInMs
+    const nextTrackId = isValidNumber(track) ? track! : segment.track
+    const targetTrack = tracks[nextTrackId]
+    if (!targetTrack) { return undefined }
+
+    const targetCategories = targetTrack.name.split(",").map((name) => name.trim())
+    const acceptsCategory =
+      targetTrack.name === "(empty)"
+      || targetCategories.includes(segment.category)
+    if (!acceptsCategory) { return undefined }
+
+    const hasCollision = previousSegments.some((otherSegment) => (
+      otherSegment.id !== segment.id
+      && otherSegment.track === nextTrackId
+      && otherSegment.startTimeInMs < nextEndTimeInMs
+      && otherSegment.endTimeInMs > nextStartTimeInMs
+    ))
+    if (hasCollision) { return undefined }
+
+    let movedSegment: TimelineSegment | undefined
+    const segments = previousSegments.map((previousSegment) => {
+      if (previousSegment.id !== segment.id) { return previousSegment }
+
+      movedSegment = {
+        ...previousSegment,
+        startTimeInMs: nextStartTimeInMs,
+        endTimeInMs: nextEndTimeInMs,
+        track: nextTrackId,
+      }
+      return movedSegment
+    })
+
+    const tracksWithOccupancy = tracks.map((track) => {
+      const occupied = segments.some((segment) => segment.track === track.id)
+      if (track.id !== nextTrackId) {
+        return { ...track, occupied }
+      }
+
+      return {
+        ...track,
+        name: track.name === "(empty)" ? `${segment.category}` : track.name,
+        occupied,
+      }
+    })
+
+    const durationInMs = nextEndTimeInMs > previousDurationInMs
+      ? nextEndTimeInMs
+      : previousDurationInMs
+
+    set({
+      segments,
+      allSegmentsChanged: previousAllSegmentsChanged + 1,
+      atLeastOneSegmentChanged: previousAtLeastOneSegmentChanged + 1,
+      durationInMs,
+      ...computeContentSizeMetrics({
+        width,
+        height,
+        tracks: tracksWithOccupancy,
+        cellWidth,
+        defaultSegmentDurationInSteps,
+        durationInMsPerStep,
+        durationInMs,
+      }),
+    })
+
+    return movedSegment
   },
   findFreeTrack: ({
     startTimeInMs,
