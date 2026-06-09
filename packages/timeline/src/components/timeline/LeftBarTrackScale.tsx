@@ -32,6 +32,7 @@ export function LeftBarTrackScale() {
   const getVerticalCellPosition = useTimeline((s) => s.getVerticalCellPosition)
 
   const tracks = useTimeline(s => s.tracks)
+  const createTrack = useTimeline((s) => s.createTrack)
   const toggleTrackVisibility = useTimeline((s) => s.toggleTrackVisibility)
   const setTrackCategory = useTimeline((s) => s.setTrackCategory)
 
@@ -64,6 +65,38 @@ export function LeftBarTrackScale() {
       ))}
       </group>
       <group position={[0, 0, 0]}>
+        <Html
+          position={[
+            leftBarTrackScaleWidth / 2,
+            18,
+            4
+          ]}
+          center
+        >
+          <button
+            aria-label="Create track"
+            title="Create track"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              createTrack({ category: ClapSegmentCategory.GENERIC })
+              event.stopPropagation()
+            }}
+            style={{
+              width: 76,
+              height: 20,
+              border: "1px solid rgba(255,255,255,0.35)",
+              borderRadius: 4,
+              background: "rgba(0,0,0,0.45)",
+              color: theme.leftBarTrackScale.textColor,
+              fontSize: 13,
+              fontWeight: 700,
+              lineHeight: "18px",
+              cursor: "pointer",
+            }}
+          >
+            +
+          </button>
+        </Html>
         {tracks.map(track => (
           <Plane
           key={track.id}
