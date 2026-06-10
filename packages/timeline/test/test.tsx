@@ -95,6 +95,30 @@ describe("timeline track and clip creation", () => {
     expect(state.tracks[trackId].height).toBe(state.defaultPreviewHeight)
   })
 
+  it("rejects changing an occupied track to an incompatible category", async () => {
+    resetTimeline()
+    const trackId = useTimeline.getState().createTrack({
+      category: ClapSegmentCategory.SOUND,
+    })
+
+    await useTimeline.getState().createClip({
+      category: ClapSegmentCategory.SOUND,
+      track: trackId,
+      startTimeInMs: 1000,
+      durationInMs: 2000,
+    })
+
+    const changed = useTimeline.getState().setTrackCategory({
+      trackId,
+      category: ClapSegmentCategory.IMAGE,
+    })
+
+    const state = useTimeline.getState()
+    expect(changed).toBe(false)
+    expect(state.tracks[trackId].name).toBe("SOUND")
+    expect(state.segments[0].category).toBe(ClapSegmentCategory.SOUND)
+  })
+
   it("moves a clip along the timeline and onto a same-category track", async () => {
     resetTimeline()
     const firstTrack = useTimeline.getState().createTrack({
@@ -124,6 +148,59 @@ describe("timeline track and clip creation", () => {
     expect(state.segments[0].track).toBe(secondTrack)
     expect(state.tracks[firstTrack].occupied).toBe(false)
     expect(state.tracks[secondTrack].occupied).toBe(true)
+  })
+
+  it("clamps leftward clip movement at zero while preserving duration", async () => {
+    resetTimeline()
+    const trackId = useTimeline.getState().createTrack({
+      category: ClapSegmentCategory.SOUND,
+    })
+
+    const clip = await useTimeline.getState().createClip({
+      category: ClapSegmentCategory.SOUND,
+      track: trackId,
+      startTimeInMs: 1000,
+      durationInMs: 2000,
+    })
+
+    const moved = useTimeline.getState().moveClip({
+      segmentId: clip.id,
+      startTimeInMs: -500,
+      track: trackId,
+    })
+
+    expect(moved?.startTimeInMs).toBe(0)
+    expect(moved?.endTimeInMs).toBe(2000)
+  })
+
+  it("rejects moving a clip into an overlapping same-category slot", async () => {
+    resetTimeline()
+    const trackId = useTimeline.getState().createTrack({
+      category: ClapSegmentCategory.SOUND,
+    })
+
+    const firstClip = await useTimeline.getState().createClip({
+      category: ClapSegmentCategory.SOUND,
+      track: trackId,
+      startTimeInMs: 1000,
+      durationInMs: 2000,
+    })
+    await useTimeline.getState().createClip({
+      category: ClapSegmentCategory.SOUND,
+      track: trackId,
+      startTimeInMs: 5000,
+      durationInMs: 1000,
+    })
+
+    const moved = useTimeline.getState().moveClip({
+      segmentId: firstClip.id,
+      startTimeInMs: 4500,
+      track: trackId,
+    })
+
+    const state = useTimeline.getState()
+    expect(moved).toBeUndefined()
+    expect(state.segments.find((segment) => segment.id === firstClip.id)?.startTimeInMs).toBe(1000)
   })
 
   it("rejects moving a clip to a different track category", async () => {
