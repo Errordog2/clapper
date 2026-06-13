@@ -562,6 +562,7 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
         durationInMsPerStep,
         tracks,
         editedSegment,
+        segmentDragOffsetInMs,
         getCellHeight,
         getVerticalCellPosition,
         moveClip,
@@ -616,7 +617,6 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
       const isPrimaryButtonDown = event.buttons === 1
       if (
         eventType === SegmentPointerEvent.MOVE
-        && area === SegmentArea.MIDDLE
         && isPrimaryButtonDown
         && editedSegment?.id === segment.id
         && editedSegment.editionStatus === SegmentEditionStatus.DRAGGING
@@ -629,7 +629,7 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
         })
         moveClip({
           segmentId: segment.id,
-          startTimeInMs: cursorTimestampAtInMs - ((segment.endTimeInMs - segment.startTimeInMs) / 2),
+          startTimeInMs: cursorTimestampAtInMs - segmentDragOffsetInMs,
           track: targetTrack?.id,
         })
         event.stopPropagation()
@@ -673,8 +673,14 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
             status: SegmentEditionStatus.RESIZE_END
           })
         } else if (area === SegmentArea.MIDDLE) {
+          if (eventType === SegmentPointerEvent.DOWN) {
+            set({
+              segmentDragOffsetInMs: Math.max(0, Math.min(wMin, wMax)),
+            })
+            ;(event.target as any)?.setPointerCapture?.((event as any).pointerId)
+          }
           setEditedSegment({
-          segment,
+            segment,
             status: SegmentEditionStatus.DRAGGING
           })
         }
@@ -686,6 +692,8 @@ export const useTimeline = create<TimelineStore>((set, get) => ({
         setEditedSegment({
           segment: undefined,
         })
+        set({ segmentDragOffsetInMs: 0 })
+        ;(event.target as any)?.releasePointerCapture?.((event as any).pointerId)
       }
 
       event.stopPropagation()

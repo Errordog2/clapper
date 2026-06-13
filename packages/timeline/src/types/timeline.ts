@@ -202,6 +202,7 @@ export type TimelineStoreProjectState = ClapMeta & {
   // is both present inside each segment and also aliased here, for fast access
   hoveredSegment?: TimelineSegment
   editedSegment?: TimelineSegment
+  segmentDragOffsetInMs: number
   selectedSegments: TimelineSegment[]
 
   allSegmentsChanged: number
